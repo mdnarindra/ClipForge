@@ -112,36 +112,93 @@ function resetVideo(){
   setPipeline(1);
 }
 
-// ─── FFmpeg LOADER ───
+// ─── FFmpeg LOADER (multi-CDN fallback) ───
+const FF_CDNS = [
+  {
+    js:   'https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/umd/ffmpeg.js',
+    util: 'https://cdn.jsdelivr.net/npm/@ffmpeg/util@0.12.1/dist/umd/index.js',
+    core: 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/umd',
+    name: 'jsDelivr'
+  },
+  {
+    js:   'https://unpkg.com/@ffmpeg/ffmpeg@0.12.10/dist/umd/ffmpeg.js',
+    util: 'https://unpkg.com/@ffmpeg/util@0.12.1/dist/umd/index.js',
+    core: 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd',
+    name: 'unpkg'
+  },
+  {
+    js:   'https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.6/dist/umd/ffmpeg.js',
+    util: 'https://cdn.jsdelivr.net/npm/@ffmpeg/util@0.12.1/dist/umd/index.js',
+    core: 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/umd',
+    name: 'jsDelivr-fallback'
+  }
+];
+
 async function loadFFmpeg(){
   if(ffLoaded) return true;
   if(ffLoading){ return new Promise(r=>{const t=setInterval(()=>{if(ffLoaded){clearInterval(t);r(true)}if(!ffLoading){clearInterval(t);r(false)}},200)}); }
   ffLoading=true;
-  termLine('Memuat FFmpeg.wasm engine...','run');
-  try{
-    await loadScript('https://unpkg.com/@ffmpeg/ffmpeg@0.12.10/dist/umd/ffmpeg.js');
-    await loadScript('https://unpkg.com/@ffmpeg/util@0.12.1/dist/umd/index.js');
-    const { FFmpeg }=FFmpegWASM; const { toBlobURL, fetchFile }=FFmpegUtil;
-    window._fetchFile=fetchFile;
-    ffmpeg=new FFmpeg();
-    ffmpeg.on('log',({message})=>{
-      const m=message.match(/time=(\d+):(\d+):(\d+\.?\d*)/);
-      if(m&&window._ffCb){ window._ffCb(+m[1]*3600+ +m[2]*60+ parseFloat(m[3])); }
-    });
-    const base='https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd';
-    await ffmpeg.load({
-      coreURL: await toBlobURL(`${base}/ffmpeg-core.js`,'text/javascript'),
-      wasmURL: await toBlobURL(`${base}/ffmpeg-core.wasm`,'application/wasm'),
-    });
-    ffLoaded=true; ffLoading=false;
-    termLine('FFmpeg engine siap ✓','ok');
-    return true;
-  }catch(e){
-    ffLoading=false; termLine('Gagal memuat FFmpeg: cek koneksi','run');
-    console.error(e); return false;
+
+  for(const cdn of FF_CDNS){
+    termLine(`Mencoba CDN: ${cdn.name}...`,'run');
+    try{
+      // clean up previous failed scripts
+      document.querySelectorAll('script[data-ffmpeg]').forEach(s=>s.remove());
+      window.FFmpegWASM=undefined; window.FFmpegUtil=undefined;
+
+      await loadScript(cdn.js, true);
+      await loadScript(cdn.util, true);
+
+      if(!window.FFmpegWASM||!window.FFmpegUtil) throw new Error('globals not found');
+
+      const { FFmpeg }=window.FFmpegWASM;
+      const { toBlobURL, fetchFile }=window.FFmpegUtil;
+      window._fetchFile=fetchFile;
+
+      ffmpeg=new FFmpeg();
+      ffmpeg.on('log',({message})=>{
+        const m=message.match(/time=(\d+):(\d+):(\d+\.?\d*)/);
+        if(m&&window._ffCb){ window._ffCb(+m[1]*3600+ +m[2]*60+ parseFloat(m[3])); }
+      });
+
+      termLine(`Mengunduh engine dari ${cdn.name}... (~10MB)`,'run');
+      await ffmpeg.load({
+        coreURL: await toBlobURL(`${cdn.core}/ffmpeg-core.js`,'text/javascript'),
+        wasmURL: await toBlobURL(`${cdn.core}/ffmpeg-core.wasm`,'application/wasm'),
+      });
+
+      ffLoaded=true; ffLoading=false;
+      termLine(`✅ FFmpeg siap via ${cdn.name}`,'ok');
+      toast('✅ Engine render siap!');
+      return true;
+
+    }catch(e){
+      termLine(`❌ ${cdn.name} gagal, coba CDN berikutnya...`,'');
+      console.warn('FFmpeg CDN failed:', cdn.name, e);
+      // reset for next attempt
+      ffmpeg=null; window.FFmpegWASM=undefined; window.FFmpegUtil=undefined;
+      await sleep(500);
+    }
   }
+
+  // All CDNs failed
+  ffLoading=false;
+  termLine('❌ Semua CDN gagal. Pastikan koneksi internet stabil lalu refresh halaman.','run');
+  toast('❌ Engine gagal. Cek koneksi & refresh.');
+  return false;
 }
-function loadScript(src){return new Promise((res,rej)=>{if(document.querySelector(`script[src="${src}"]`)){res();return}const s=document.createElement('script');s.src=src;s.crossOrigin='anonymous';s.onload=res;s.onerror=rej;document.head.appendChild(s)})}
+
+function loadScript(src, tag=false){
+  return new Promise((res,rej)=>{
+    const existing=document.querySelector(`script[src="${src}"]`);
+    if(existing){ res(); return; }
+    const s=document.createElement('script');
+    s.src=src; s.crossOrigin='anonymous';
+    if(tag) s.setAttribute('data-ffmpeg','1');
+    s.onload=res; s.onerror=rej;
+    document.head.appendChild(s);
+  });
+}
 
 // ─── TERMINAL ───
 function termClear(){ document.getElementById('termBody').innerHTML=''; }
