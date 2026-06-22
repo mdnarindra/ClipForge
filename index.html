@@ -1,0 +1,652 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<!-- COOP/COEP agar FFmpeg.wasm jalan di GitHub Pages -->
+<script src="https://unpkg.com/coi-serviceworker@0.1.7/coi-serviceworker.min.js"></script>
+<meta name="theme-color" content="#08080C">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="ClipForge Studio">
+<link rel="manifest" href="manifest.json">
+<title>ClipForge Studio — AI Video Clipper</title>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#08080C; --surface:#101018; --s2:#181824; --s3:#222232; --border:#2C2C3E;
+  --amber:#FF7A1A; --amber2:#FFA94D; --amberglow:rgba(255,122,26,.4);
+  --purple:#8B5CF6; --purpleglow:rgba(139,92,246,.35);
+  --ok:#22C55E; --warn:#FBBF24; --err:#EF4444; --info:#38BDF8;
+  --text:#F4F3FB; --muted:#73738C; --dim:#4A4A5E;
+  --mono:'JetBrains Mono',monospace; --sans:'Sora',sans-serif;
+}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{background:var(--bg);color:var(--text);font-family:var(--sans);min-height:100dvh;overflow-x:hidden;font-size:14px}
+
+.bg-grad{position:fixed;inset:0;pointer-events:none;z-index:0;
+  background:radial-gradient(ellipse 70% 50% at 50% -5%,rgba(255,122,26,.1),transparent 55%),
+             radial-gradient(ellipse 50% 40% at 90% 100%,rgba(139,92,246,.08),transparent 55%)}
+
+/* HEADER */
+header{position:sticky;top:0;z-index:100;background:rgba(8,8,12,.88);
+  backdrop-filter:blur(24px);border-bottom:1px solid var(--border);
+  padding:12px 18px;display:flex;align-items:center;justify-content:space-between}
+.brand{display:flex;align-items:center;gap:10px}
+.brand-mark{width:34px;height:34px;border-radius:10px;
+  background:linear-gradient(135deg,var(--amber),var(--amber2));
+  display:flex;align-items:center;justify-content:center;font-size:16px;
+  box-shadow:0 0 20px var(--amberglow)}
+.brand-text{font-size:16px;font-weight:700;letter-spacing:-.3px;line-height:1}
+.brand-text span{color:var(--amber2);font-weight:800}
+.brand-sub{font-size:9px;color:var(--muted);font-family:var(--mono);letter-spacing:.5px;margin-top:2px}
+.sys-badge{font-family:var(--mono);font-size:9px;display:flex;align-items:center;gap:5px;
+  background:rgba(34,197,94,.12);border:1px solid rgba(34,197,94,.3);
+  color:var(--ok);padding:5px 10px;border-radius:20px}
+.sys-dot{width:6px;height:6px;border-radius:50%;background:var(--ok);box-shadow:0 0 6px var(--ok);animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+
+main{position:relative;z-index:1;padding:18px 15px 120px;max-width:520px;margin:0 auto}
+
+/* HERO */
+.hero{padding:24px 4px 20px}
+.hero-eyebrow{font-family:var(--mono);font-size:10px;letter-spacing:2px;color:var(--amber);
+  text-transform:uppercase;margin-bottom:10px;display:flex;align-items:center;gap:8px}
+.hero-eyebrow::before{content:'';width:24px;height:1px;background:var(--amber)}
+.hero h1{font-size:28px;font-weight:800;line-height:1.12;letter-spacing:-.8px;margin-bottom:10px}
+.hero h1 em{font-style:normal;color:var(--amber2)}
+.hero p{font-size:13px;color:var(--muted);line-height:1.65;max-width:380px}
+
+/* PIPELINE STEPS indicator */
+.pipeline{display:flex;gap:0;margin:18px 0 6px;background:var(--surface);
+  border:1px solid var(--border);border-radius:13px;padding:5px;position:relative;overflow:hidden}
+.pl-step{flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;
+  padding:11px 4px;border-radius:9px;position:relative;z-index:2;transition:all .3s}
+.pl-step.active{background:linear-gradient(135deg,rgba(255,122,26,.15),rgba(255,169,77,.08))}
+.pl-step.done .pl-num{background:var(--ok);color:#fff;border-color:var(--ok)}
+.pl-num{width:24px;height:24px;border-radius:50%;border:1.5px solid var(--border);
+  display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;
+  color:var(--muted);transition:all .3s;font-family:var(--mono)}
+.pl-step.active .pl-num{border-color:var(--amber);color:var(--amber);box-shadow:0 0 12px var(--amberglow)}
+.pl-label{font-size:9px;font-weight:600;color:var(--muted);text-align:center;letter-spacing:.2px}
+.pl-step.active .pl-label{color:var(--text)}
+
+/* CARD */
+.card{background:var(--surface);border:1px solid var(--border);border-radius:15px;
+  padding:18px;margin-bottom:14px}
+.card-hd{font-size:10px;font-weight:600;letter-spacing:1.2px;text-transform:uppercase;
+  color:var(--muted);margin-bottom:13px;display:flex;align-items:center;gap:7px}
+.card-hd .ic{color:var(--amber);font-size:13px}
+.card-hd-count{margin-left:auto;font-family:var(--mono);font-size:10px;color:var(--dim);
+  text-transform:none;letter-spacing:0}
+
+/* INFO STRIPS */
+.strip{border-radius:11px;padding:12px 14px;font-size:12px;line-height:1.6;margin-bottom:13px;display:flex;gap:10px;align-items:flex-start}
+.strip .si{font-size:15px;flex-shrink:0;line-height:1.3}
+.strip.amber{background:rgba(255,122,26,.08);border:1px solid rgba(255,122,26,.25);color:rgba(244,243,251,.88)}
+.strip.purple{background:rgba(139,92,246,.08);border:1px solid rgba(139,92,246,.25);color:rgba(244,243,251,.88)}
+.strip.green{background:rgba(34,197,94,.07);border:1px solid rgba(34,197,94,.25);color:rgba(244,243,251,.88)}
+
+/* UPLOAD ZONE */
+.dropzone{border:2px dashed var(--border);border-radius:14px;padding:32px 20px;text-align:center;
+  cursor:pointer;transition:all .3s;position:relative;overflow:hidden;background:var(--s2)}
+.dropzone:hover,.dropzone.drag{border-color:var(--amber);background:rgba(255,122,26,.05)}
+.dropzone input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%}
+.dz-icon{font-size:40px;margin-bottom:12px;filter:grayscale(.2)}
+.dz-title{font-size:15px;font-weight:600;margin-bottom:5px}
+.dz-sub{font-size:11px;color:var(--muted);line-height:1.5}
+.dz-formats{margin-top:11px;display:inline-flex;gap:6px;flex-wrap:wrap;justify-content:center}
+.dz-fmt{font-size:9px;font-family:var(--mono);background:var(--s3);border-radius:5px;padding:3px 8px;color:var(--muted)}
+
+/* VIDEO LOADED */
+.vloaded{display:none}
+.vloaded.show{display:block}
+.vl-card{display:flex;gap:12px;align-items:center;padding:12px;background:var(--s2);
+  border-radius:12px;border:1px solid var(--border)}
+.vl-thumb{width:64px;height:64px;border-radius:9px;object-fit:cover;background:#000;flex-shrink:0}
+.vl-meta{flex:1;min-width:0}
+.vl-name{font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:4px}
+.vl-stats{display:flex;gap:8px;flex-wrap:wrap}
+.vl-stat{font-size:9px;font-family:var(--mono);background:var(--s3);border-radius:5px;
+  padding:3px 7px;color:var(--muted)}
+.vl-x{background:none;border:1px solid var(--border);border-radius:8px;width:32px;height:32px;
+  color:var(--muted);cursor:pointer;font-size:16px;flex-shrink:0;display:flex;align-items:center;justify-content:center;transition:all .2s}
+.vl-x:hover{border-color:var(--err);color:var(--err)}
+
+/* FORM CONTROLS */
+.frow{margin-bottom:15px}
+.frow:last-child{margin-bottom:0}
+.flabel{font-size:11px;font-weight:500;color:var(--muted);margin-bottom:8px;display:flex;justify-content:space-between;align-items:center}
+.flabel strong{color:var(--text);font-family:var(--mono);font-size:12px}
+
+input[type=range]{width:100%;-webkit-appearance:none;background:var(--s3);height:6px;border-radius:3px;outline:none}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:22px;height:22px;border-radius:50%;
+  background:linear-gradient(135deg,var(--amber),var(--amber2));cursor:pointer;box-shadow:0 2px 10px var(--amberglow)}
+
+/* CHIPS */
+.chips{display:flex;gap:7px;flex-wrap:wrap}
+.chip{background:var(--s2);border:1px solid var(--border);border-radius:9px;padding:8px 13px;
+  font-size:12px;font-weight:500;cursor:pointer;transition:all .2s;color:var(--muted);white-space:nowrap}
+.chip.on{background:rgba(255,122,26,.15);border-color:var(--amber);color:var(--amber2)}
+
+/* SEGMENTED / GRID SELECT */
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:7px}
+.opt{background:var(--s2);border:1px solid var(--border);border-radius:11px;padding:13px 8px;
+  text-align:center;cursor:pointer;transition:all .2s}
+.opt.on{border-color:var(--amber);background:rgba(255,122,26,.1)}
+.opt-ic{font-size:20px;margin-bottom:5px;line-height:1}
+.opt-nm{font-size:10px;font-weight:600;color:var(--muted);line-height:1.2}
+.opt.on .opt-nm{color:var(--amber2)}
+.opt-ratio{width:24px;margin:0 auto 6px;border:2px solid var(--muted);border-radius:3px;transition:border-color .2s}
+.opt.on .opt-ratio{border-color:var(--amber2)}
+
+/* TOGGLE LIST */
+.tog-row{display:flex;align-items:center;justify-content:space-between;padding:11px 0;border-bottom:1px solid var(--border)}
+.tog-row:last-child{border-bottom:none}
+.tog-left{flex:1;padding-right:12px}
+.tog-nm{font-size:13px;font-weight:500;margin-bottom:2px}
+.tog-ds{font-size:10px;color:var(--muted);line-height:1.4}
+.tog{position:relative;width:44px;height:24px;flex-shrink:0}
+.tog input{opacity:0;width:0;height:0}
+.tog-sl{position:absolute;inset:0;background:var(--s3);border-radius:12px;cursor:pointer;transition:.3s;border:1px solid var(--border)}
+.tog-sl:before{content:'';position:absolute;width:18px;height:18px;border-radius:50%;background:#fff;top:2px;left:2px;transition:.3s}
+.tog input:checked + .tog-sl{background:linear-gradient(135deg,var(--amber),var(--amber2));border-color:transparent}
+.tog input:checked + .tog-sl:before{transform:translateX(20px)}
+
+/* TEXT INPUT */
+.tinput{width:100%;background:var(--s2);border:1px solid var(--border);border-radius:10px;
+  color:var(--text);font-size:13px;font-family:var(--sans);padding:11px 13px;outline:none;transition:border-color .2s}
+.tinput:focus{border-color:var(--amber)}
+.tinput::placeholder{color:var(--dim)}
+
+/* CTA BUTTON */
+.cta{width:100%;padding:16px;background:linear-gradient(135deg,var(--amber),var(--amber2));border:none;
+  border-radius:14px;color:#1a0e02;font-family:var(--sans);font-size:15px;font-weight:700;cursor:pointer;
+  box-shadow:0 6px 28px var(--amberglow);transition:transform .15s;display:flex;align-items:center;justify-content:center;gap:9px;letter-spacing:.2px}
+.cta:active{transform:scale(.98)}
+.cta:disabled{opacity:.4;cursor:not-allowed;transform:none;box-shadow:none}
+.cta.purple{background:linear-gradient(135deg,var(--purple),#A78BFA);color:#fff;box-shadow:0 6px 28px var(--purpleglow)}
+.cta.ghost{background:var(--s2);color:var(--text);border:1px solid var(--border);box-shadow:none}
+
+/* PROGRESS / TERMINAL */
+.term{display:none;margin-bottom:14px}
+.term.show{display:block}
+.term-card{background:#0a0a10;border:1px solid var(--border);border-radius:14px;overflow:hidden}
+.term-bar{display:flex;align-items:center;gap:7px;padding:11px 14px;border-bottom:1px solid var(--border);background:var(--s2)}
+.term-dots{display:flex;gap:5px}
+.term-dot{width:9px;height:9px;border-radius:50%}
+.term-title{font-family:var(--mono);font-size:10px;color:var(--muted);margin-left:6px}
+.term-state{margin-left:auto;font-family:var(--mono);font-size:9px;color:var(--amber);display:flex;align-items:center;gap:5px}
+.term-body{padding:14px;font-family:var(--mono);font-size:11px;line-height:1.8;max-height:200px;overflow-y:auto}
+.term-line{color:var(--muted);display:flex;gap:8px}
+.term-line .tprompt{color:var(--amber);flex-shrink:0}
+.term-line.ok{color:var(--ok)}
+.term-line.run{color:var(--info)}
+.pbar-wrap{padding:0 14px 14px}
+.pbar{height:8px;background:var(--s3);border-radius:4px;overflow:hidden;position:relative}
+.pbar-fill{height:100%;background:linear-gradient(90deg,var(--amber),var(--amber2));border-radius:4px;width:0%;transition:width .4s;position:relative;overflow:hidden}
+.pbar-fill::after{content:'';position:absolute;inset:0;background:linear-gradient(90deg,transparent,rgba(255,255,255,.35),transparent);animation:shimmer 1.5s infinite}
+@keyframes shimmer{0%{transform:translateX(-100%)}100%{transform:translateX(100%)}}
+.pbar-txt{display:flex;justify-content:space-between;font-family:var(--mono);font-size:10px;margin-top:7px;color:var(--muted)}
+
+/* RESULTS */
+.results{display:none}
+.results.show{display:block}
+.res-hd{display:flex;align-items:center;justify-content:space-between;margin-bottom:13px;flex-wrap:wrap;gap:8px}
+.res-title{font-size:18px;font-weight:700;letter-spacing:-.3px}
+.res-title span{color:var(--amber2)}
+.batch-bar{display:flex;gap:8px;align-items:center;background:var(--surface);border:1px solid var(--border);
+  border-radius:12px;padding:11px 13px;margin-bottom:14px;flex-wrap:wrap}
+.batch-info{font-size:11px;color:var(--muted);font-family:var(--mono);flex:1;min-width:120px}
+.batch-info b{color:var(--amber2)}
+.batch-btn{background:linear-gradient(135deg,var(--amber),var(--amber2));border:none;border-radius:9px;
+  color:#1a0e02;font-weight:700;font-size:11px;padding:9px 14px;cursor:pointer;font-family:var(--sans);transition:transform .15s}
+.batch-btn:active{transform:scale(.95)}
+.batch-btn:disabled{opacity:.4;cursor:not-allowed}
+.batch-btn.sm{background:var(--s2);color:var(--text);border:1px solid var(--border)}
+
+/* CLIP CARD */
+.clip{background:var(--surface);border:1px solid var(--border);border-radius:15px;overflow:hidden;margin-bottom:12px;transition:border-color .2s}
+.clip.ready{border-color:rgba(34,197,94,.35)}
+.clip-top{display:flex;gap:11px;padding:13px;border-bottom:1px solid var(--border)}
+.clip-rank{width:30px;height:30px;border-radius:8px;background:linear-gradient(135deg,var(--amber),var(--amber2));
+  display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;color:#1a0e02;flex-shrink:0;font-family:var(--mono)}
+.clip-tinfo{flex:1;min-width:0}
+.clip-ttl{font-size:13px;font-weight:600;line-height:1.32;margin-bottom:4px}
+.clip-ts{font-size:10px;font-family:var(--mono);color:var(--muted);display:flex;gap:9px;flex-wrap:wrap}
+.clip-score{flex-shrink:0;text-align:center}
+.clip-score-n{font-size:16px;font-weight:800;font-family:var(--mono);line-height:1}
+.clip-score-l{font-size:8px;color:var(--muted);letter-spacing:.5px;margin-top:2px}
+
+.clip-body{padding:13px}
+.clip-hook{font-size:12px;color:rgba(244,243,251,.85);background:var(--s2);border-left:3px solid var(--amber);
+  border-radius:0 9px 9px 0;padding:10px 12px;margin-bottom:11px;line-height:1.5}
+.clip-hook-lbl{font-size:9px;font-family:var(--mono);color:var(--amber);letter-spacing:1px;margin-bottom:4px}
+.clip-cap{font-size:11px;color:var(--muted);line-height:1.6;margin-bottom:10px}
+.clip-tags{display:flex;gap:5px;flex-wrap:wrap;margin-bottom:12px}
+.ctag{font-size:9px;font-family:var(--mono);background:var(--s2);border:1px solid var(--border);border-radius:5px;padding:3px 7px;color:var(--muted)}
+.ctag.amber{color:var(--amber2);border-color:rgba(255,122,26,.3)}
+.ctag.purple{color:#A78BFA;border-color:rgba(139,92,246,.3)}
+
+/* clip ratio chooser */
+.clip-ratios{display:flex;gap:6px;margin-bottom:11px}
+.cr-opt{flex:1;background:var(--s2);border:1px solid var(--border);border-radius:8px;padding:7px 4px;
+  text-align:center;cursor:pointer;font-size:10px;font-weight:600;color:var(--muted);transition:all .2s;font-family:var(--mono)}
+.cr-opt.on{border-color:var(--amber);background:rgba(255,122,26,.1);color:var(--amber2)}
+
+/* video output */
+.vout{display:none;background:#000;border-radius:11px;overflow:hidden;margin-bottom:11px}
+.vout.show{display:block}
+.vout video{width:100%;display:block;max-height:300px}
+.vout-foot{display:flex;align-items:center;justify-content:space-between;padding:9px 12px;background:var(--s2)}
+.vout-sz{font-size:10px;font-family:var(--mono);color:var(--muted)}
+.vout-badge{font-size:9px;font-family:var(--mono);color:var(--ok);display:flex;align-items:center;gap:4px}
+
+/* clip process bar */
+.cproc{display:none;padding:11px;background:var(--s2);border-radius:10px;margin-bottom:11px}
+.cproc.show{display:block}
+.cproc-bar{height:6px;background:var(--s3);border-radius:3px;overflow:hidden;margin-bottom:6px}
+.cproc-fill{height:100%;background:linear-gradient(90deg,var(--amber),var(--amber2));border-radius:3px;width:0%;transition:width .3s}
+.cproc-txt{font-size:10px;font-family:var(--mono);color:var(--muted);display:flex;justify-content:space-between}
+
+/* clip actions */
+.clip-acts{display:grid;grid-template-columns:1fr 1fr;gap:7px}
+.cbtn{padding:11px;border-radius:10px;font-family:var(--sans);font-size:12px;font-weight:600;cursor:pointer;
+  border:none;transition:all .2s;display:flex;align-items:center;justify-content:center;gap:6px}
+.cbtn.go{background:linear-gradient(135deg,var(--amber),var(--amber2));color:#1a0e02;box-shadow:0 3px 12px var(--amberglow)}
+.cbtn.dl{background:linear-gradient(135deg,var(--ok),#4ADE80);color:#04230f;box-shadow:0 3px 12px rgba(34,197,94,.3)}
+.cbtn.gh{background:var(--s2);color:var(--text);border:1px solid var(--border)}
+.cbtn:active{transform:scale(.96)}
+.cbtn:disabled{opacity:.4;cursor:not-allowed;transform:none}
+.cbtn.full{grid-column:1/-1}
+
+/* MONETIZE */
+.mono{background:linear-gradient(140deg,rgba(255,122,26,.1),rgba(139,92,246,.06));border:1px solid rgba(255,122,26,.25);
+  border-radius:15px;padding:17px;margin-bottom:14px}
+.mono-hd{font-size:13px;font-weight:700;margin-bottom:11px;display:flex;align-items:center;gap:8px}
+.mono-list{list-style:none;display:flex;flex-direction:column;gap:7px}
+.mono-list li{font-size:11px;color:rgba(244,243,251,.82);display:flex;gap:8px;align-items:flex-start;line-height:1.55}
+.mono-list li::before{content:'→';color:var(--amber2);flex-shrink:0;font-weight:700}
+
+/* PAGES + NAV */
+.page{display:none}.page.active{display:block}
+.bnav{position:fixed;bottom:0;left:0;right:0;z-index:100;background:rgba(8,8,12,.96);backdrop-filter:blur(24px);
+  border-top:1px solid var(--border);display:flex;padding:8px 0 env(safe-area-inset-bottom)}
+.nav{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;padding:7px 4px;font-size:9px;
+  color:var(--muted);cursor:pointer;transition:color .2s;border:none;background:none;font-family:var(--sans);font-weight:500}
+.nav.active{color:var(--amber2)}
+.nav-ic{font-size:19px;line-height:1}
+
+/* TOAST */
+.toast{position:fixed;bottom:78px;left:50%;transform:translateX(-50%) translateY(12px);background:var(--s3);
+  border:1px solid var(--border);color:var(--text);border-radius:11px;padding:11px 18px;font-size:12px;font-weight:500;
+  z-index:300;opacity:0;pointer-events:none;transition:opacity .3s,transform .3s;max-width:90vw;text-align:center;box-shadow:0 8px 30px rgba(0,0,0,.5)}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
+/* HISTORY + SETTINGS */
+.empty{text-align:center;padding:60px 20px;color:var(--muted)}
+.empty-ic{font-size:54px;margin-bottom:12px;opacity:.5}
+.empty p{font-size:13px;line-height:1.6}
+.sgroup{margin-bottom:18px}
+.sgroup-t{font-size:10px;font-weight:600;letter-spacing:1.2px;text-transform:uppercase;color:var(--muted);margin-bottom:10px;padding-left:3px}
+.sitem{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px 15px;
+  display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;gap:12px}
+.sitem-t{font-size:13px;font-weight:500;margin-bottom:2px}
+.sitem-d{font-size:10px;color:var(--muted);line-height:1.4}
+.ssel{background:var(--s2);border:1px solid var(--border);border-radius:8px;padding:8px 11px;color:var(--text);font-size:12px;outline:none;cursor:pointer;font-family:var(--sans)}
+
+/* SPINNER */
+.spin{width:15px;height:15px;border-radius:50%;border:2px solid rgba(26,14,2,.3);border-top-color:#1a0e02;animation:sp .7s linear infinite;display:inline-block}
+.spin.light{border-color:rgba(255,255,255,.3);border-top-color:#fff}
+@keyframes sp{to{transform:rotate(360deg)}}
+
+::-webkit-scrollbar{width:4px;height:4px}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+</style>
+</head>
+<body>
+<div class="bg-grad"></div>
+<div class="toast" id="toast"></div>
+
+<header>
+  <div class="brand">
+    <div class="brand-mark">⚡</div>
+    <div>
+      <div class="brand-text">Clip<span>Forge</span> Studio</div>
+      <div class="brand-sub">AI VIDEO CLIPPER</div>
+    </div>
+  </div>
+  <div class="sys-badge"><span class="sys-dot"></span>SYSTEM READY</div>
+</header>
+
+<!-- ════ STUDIO PAGE ════ -->
+<div class="page active" id="page-studio">
+<main>
+
+  <div class="hero">
+    <div class="hero-eyebrow">Universal Clip Pipeline</div>
+    <h1>Satu video panjang,<br><em>puluhan clip viral</em></h1>
+    <p>Upload videomu, AI deteksi momen terbaik, tempel hook & caption, lalu render jadi MP4 siap upload — semua di HP-mu.</p>
+  </div>
+
+  <!-- PIPELINE INDICATOR -->
+  <div class="pipeline" id="pipeline">
+    <div class="pl-step active" id="pl-1"><div class="pl-num">1</div><div class="pl-label">Upload</div></div>
+    <div class="pl-step" id="pl-2"><div class="pl-num">2</div><div class="pl-label">Atur</div></div>
+    <div class="pl-step" id="pl-3"><div class="pl-num">3</div><div class="pl-label">Generate</div></div>
+    <div class="pl-step" id="pl-4"><div class="pl-num">4</div><div class="pl-label">Render</div></div>
+  </div>
+
+  <div class="strip amber">
+    <span class="si">💡</span>
+    <span>Download video YouTube dulu (pakai SnapTube/TubeMate), simpan di galeri, lalu upload di sini. AI yang urus sisanya: deteksi momen, judul, hook, caption, hashtag, subtitle, sampai render MP4.</span>
+  </div>
+
+  <!-- STEP 1: UPLOAD -->
+  <div class="card">
+    <div class="card-hd"><span class="ic">📁</span>Sumber Video</div>
+    <div class="dropzone" id="dropzone">
+      <input type="file" id="fileInput" accept="video/*">
+      <div class="dz-icon">🎬</div>
+      <div class="dz-title">Pilih atau seret video</div>
+      <div class="dz-sub">Dari galeri, file manager, atau Drive di tab-mu</div>
+      <div class="dz-formats">
+        <span class="dz-fmt">MP4</span><span class="dz-fmt">MKV</span><span class="dz-fmt">MOV</span>
+        <span class="dz-fmt">AVI</span><span class="dz-fmt">WEBM</span>
+      </div>
+    </div>
+    <div class="vloaded" id="vloaded">
+      <div class="vl-card">
+        <video class="vl-thumb" id="vlThumb" muted playsinline></video>
+        <div class="vl-meta">
+          <div class="vl-name" id="vlName">video.mp4</div>
+          <div class="vl-stats" id="vlStats"><span class="vl-stat">Memuat...</span></div>
+        </div>
+        <button class="vl-x" onclick="resetVideo()">✕</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- STEP 2: AI PIPELINE CONFIG -->
+  <div class="card">
+    <div class="card-hd"><span class="ic">🧠</span>Mesin AI</div>
+    <div class="grid3" id="aiEngines">
+      <div class="opt on" onclick="selOne(this,'aiEngines','engine','balanced')">
+        <div class="opt-ic">⚡</div><div class="opt-nm">Cepat</div>
+      </div>
+      <div class="opt" onclick="selOne(this,'aiEngines','engine','smart')">
+        <div class="opt-ic">🎯</div><div class="opt-nm">Pintar</div>
+      </div>
+      <div class="opt" onclick="selOne(this,'aiEngines','engine','deep')">
+        <div class="opt-ic">🔬</div><div class="opt-nm">Mendalam</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CLIP SETTINGS -->
+  <div class="card">
+    <div class="card-hd"><span class="ic">✂️</span>Pengaturan Clip</div>
+
+    <div class="frow">
+      <div class="flabel">Jumlah clip dihasilkan <strong id="cntVal">10 clip</strong></div>
+      <input type="range" id="cntSlider" min="3" max="50" value="10" step="1" oninput="upd('cntVal',this.value+' clip')">
+    </div>
+
+    <div class="frow">
+      <div class="flabel">Durasi per clip <strong id="durVal">45 detik</strong></div>
+      <input type="range" id="durSlider" min="15" max="90" value="45" step="5" oninput="upd('durVal',this.value+' detik')">
+    </div>
+
+    <div class="frow">
+      <div class="flabel">Aspect ratio default <span style="font-size:9px;color:var(--dim)">(bisa diubah per clip)</span></div>
+      <div class="grid4" id="ratioSel">
+        <div class="opt on" onclick="selOne(this,'ratioSel','ratio','9:16')">
+          <div class="opt-ratio" style="height:30px;width:17px"></div><div class="opt-nm">9:16</div>
+        </div>
+        <div class="opt" onclick="selOne(this,'ratioSel','ratio','1:1')">
+          <div class="opt-ratio" style="height:24px;width:24px"></div><div class="opt-nm">1:1</div>
+        </div>
+        <div class="opt" onclick="selOne(this,'ratioSel','ratio','4:5')">
+          <div class="opt-ratio" style="height:28px;width:22px"></div><div class="opt-nm">4:5</div>
+        </div>
+        <div class="opt" onclick="selOne(this,'ratioSel','ratio','16:9')">
+          <div class="opt-ratio" style="height:15px;width:26px"></div><div class="opt-nm">16:9</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CONTENT NICHE -->
+  <div class="card">
+    <div class="card-hd"><span class="ic">🎭</span>Kategori Konten <span class="card-hd-count">pilih beberapa</span></div>
+    <div class="chips" id="niches">
+      <div class="chip on" onclick="tog(this)">🔥 Viral</div>
+      <div class="chip" onclick="tog(this)">😂 Komedi</div>
+      <div class="chip" onclick="tog(this)">💡 Edukasi</div>
+      <div class="chip" onclick="tog(this)">😮 Shocking</div>
+      <div class="chip" onclick="tog(this)">❤️ Emosional</div>
+      <div class="chip" onclick="tog(this)">💪 Motivasi</div>
+      <div class="chip" onclick="tog(this)">🎙️ Podcast</div>
+      <div class="chip" onclick="tog(this)">🍔 Kuliner</div>
+      <div class="chip" onclick="tog(this)">⚽ Olahraga</div>
+      <div class="chip" onclick="tog(this)">🎮 Gaming</div>
+    </div>
+  </div>
+
+  <!-- TARGET PLATFORM -->
+  <div class="card">
+    <div class="card-hd"><span class="ic">📱</span>Platform Target</div>
+    <div class="grid4" id="platforms">
+      <div class="opt on" onclick="selOne(this,'platforms','platform','tiktok')">
+        <div class="opt-ic">🎵</div><div class="opt-nm">TikTok</div>
+      </div>
+      <div class="opt" onclick="selOne(this,'platforms','platform','shorts')">
+        <div class="opt-ic">▶️</div><div class="opt-nm">Shorts</div>
+      </div>
+      <div class="opt" onclick="selOne(this,'platforms','platform','reels')">
+        <div class="opt-ic">📸</div><div class="opt-nm">Reels</div>
+      </div>
+      <div class="opt" onclick="selOne(this,'platforms','platform','all')">
+        <div class="opt-ic">🌐</div><div class="opt-nm">Semua</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TEXT / STYLE OVERLAY -->
+  <div class="card">
+    <div class="card-hd"><span class="ic">✍️</span>Text & Overlay dalam Video</div>
+
+    <div class="tog-row">
+      <div class="tog-left">
+        <div class="tog-nm">Judul Hook (atas)</div>
+        <div class="tog-ds">Teks besar penarik perhatian di 3 detik pertama</div>
+      </div>
+      <label class="tog"><input type="checkbox" id="ovHook" checked><span class="tog-sl"></span></label>
+    </div>
+
+    <div class="tog-row">
+      <div class="tog-left">
+        <div class="tog-nm">Subtitle Otomatis (bawah)</div>
+        <div class="tog-ds">Caption mengikuti ucapan — gaya CapCut</div>
+      </div>
+      <label class="tog"><input type="checkbox" id="ovSub" checked><span class="tog-sl"></span></label>
+    </div>
+
+    <div class="tog-row">
+      <div class="tog-left">
+        <div class="tog-nm">Watermark Username</div>
+        <div class="tog-ds">Branding di pojok video</div>
+      </div>
+      <label class="tog"><input type="checkbox" id="ovWm"><span class="tog-sl"></span></label>
+    </div>
+
+    <div class="tog-row">
+      <div class="tog-left">
+        <div class="tog-nm">CTA Akhir (Follow/Like)</div>
+        <div class="tog-ds">Ajakan di detik terakhir</div>
+      </div>
+      <label class="tog"><input type="checkbox" id="ovCta"><span class="tog-sl"></span></label>
+    </div>
+
+    <div class="frow" id="wmInputWrap" style="margin-top:13px;display:none">
+      <div class="flabel">Teks watermark</div>
+      <input class="tinput" id="wmText" type="text" placeholder="@username_kamu" maxlength="24">
+    </div>
+
+    <div class="frow" style="margin-top:13px">
+      <div class="flabel">Gaya subtitle</div>
+      <div class="grid3" id="subStyles">
+        <div class="opt on" onclick="selOne(this,'subStyles','substyle','bold')">
+          <div class="opt-nm" style="font-size:11px">Bold Putih</div>
+        </div>
+        <div class="opt" onclick="selOne(this,'subStyles','substyle','karaoke')">
+          <div class="opt-nm" style="font-size:11px">Karaoke Kuning</div>
+        </div>
+        <div class="opt" onclick="selOne(this,'subStyles','substyle','boxed')">
+          <div class="opt-nm" style="font-size:11px">Box Hitam</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- VIDEO QUALITY -->
+  <div class="card">
+    <div class="card-hd"><span class="ic">🎚️</span>Kualitas Output</div>
+    <div class="grid3" id="quality">
+      <div class="opt" onclick="selOne(this,'quality','quality','1080')">
+        <div class="opt-ic">💎</div><div class="opt-nm">1080p</div>
+      </div>
+      <div class="opt on" onclick="selOne(this,'quality','quality','720')">
+        <div class="opt-ic">✨</div><div class="opt-nm">720p</div>
+      </div>
+      <div class="opt" onclick="selOne(this,'quality','quality','480')">
+        <div class="opt-ic">⚡</div><div class="opt-nm">480p Cepat</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- GENERATE -->
+  <button class="cta" id="genBtn" onclick="startGenerate()">
+    ⚡ Generate Semua Clip
+  </button>
+
+  <!-- TERMINAL / PROGRESS -->
+  <div class="term" id="terminal">
+    <div class="term-card">
+      <div class="term-bar">
+        <div class="term-dots">
+          <span class="term-dot" style="background:#FF5F56"></span>
+          <span class="term-dot" style="background:#FFBD2E"></span>
+          <span class="term-dot" style="background:#27C93F"></span>
+        </div>
+        <span class="term-title">clipforge-engine</span>
+        <span class="term-state" id="termState"><span class="spin light"></span>RUNNING</span>
+      </div>
+      <div class="term-body" id="termBody"></div>
+      <div class="pbar-wrap">
+        <div class="pbar"><div class="pbar-fill" id="pbarFill"></div></div>
+        <div class="pbar-txt"><span id="pbarLabel">Memulai...</span><span id="pbarPct">0%</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- RESULTS -->
+  <div class="results" id="results">
+    <div class="res-hd">
+      <div class="res-title">Hasil <span id="resCount">0</span> Clip</div>
+    </div>
+    <div class="batch-bar">
+      <div class="batch-info">Render <b id="renderedCount">0</b>/<span id="totalCount">0</span> · batch 5 clip</div>
+      <button class="batch-btn" id="batchBtn" onclick="renderNextBatch()">▶️ Render 5 Berikutnya</button>
+      <button class="batch-btn sm" onclick="downloadAllReady()">⬇️ Download Siap</button>
+    </div>
+    <div id="clipList"></div>
+  </div>
+
+  <!-- MONETIZE -->
+  <div class="mono" id="monoTips" style="display:none">
+    <div class="mono-hd">💰 Strategi Monetisasi Clipper</div>
+    <ul class="mono-list">
+      <li>Upload 3–5 clip/hari konsisten — algoritma suka frekuensi stabil</li>
+      <li>Cross-post clip yang sama ke TikTok, Reels & Shorts untuk traffic ganda</li>
+      <li>TikTok Creator Fund/Rewards bayar dolar untuk views dari market USA</li>
+      <li>YouTube Shorts monetisasi: 1.000 sub + 10 juta views (90 hari)</li>
+      <li>Setelah punya audiens, terima endorse brand — penghasilan terbesar di sini</li>
+    </ul>
+  </div>
+
+</main>
+</div>
+
+<!-- ════ LIBRARY PAGE ════ -->
+<div class="page" id="page-library">
+<main>
+  <div class="hero" style="padding-top:18px">
+    <div class="hero-eyebrow">Riwayat Project</div>
+    <h1>Clip <em>Library</em></h1>
+  </div>
+  <div id="libContent">
+    <div class="empty"><div class="empty-ic">📚</div><p>Belum ada project.<br>Generate clip pertamamu di tab Studio!</p></div>
+  </div>
+</main>
+</div>
+
+<!-- ════ SETTINGS PAGE ════ -->
+<div class="page" id="page-settings">
+<main>
+  <div class="hero" style="padding-top:18px">
+    <div class="hero-eyebrow">Preferensi</div>
+    <h1><em>Pengaturan</em></h1>
+  </div>
+
+  <div class="sgroup">
+    <div class="sgroup-t">Bahasa & AI</div>
+    <div class="sitem">
+      <div><div class="sitem-t">Bahasa Caption</div><div class="sitem-d">Bahasa untuk judul, hook & hashtag</div></div>
+      <select class="ssel" id="setLang"><option value="id">Indonesia</option><option value="en">English</option></select>
+    </div>
+    <div class="sitem">
+      <div><div class="sitem-t">Default Watermark</div><div class="sitem-d">Username tersimpan untuk semua project</div></div>
+      <input class="ssel" id="setWm" style="width:120px" type="text" placeholder="@username">
+    </div>
+  </div>
+
+  <div class="sgroup">
+    <div class="sgroup-t">Performa</div>
+    <div class="sitem">
+      <div><div class="sitem-t">Ukuran Batch Render</div><div class="sitem-d">Clip diproses sekaligus (kecil = lebih aman)</div></div>
+      <select class="ssel" id="setBatch"><option value="3">3 clip</option><option value="5" selected>5 clip</option><option value="10">10 clip</option></select>
+    </div>
+    <div class="sitem">
+      <div><div class="sitem-t">Encoding Speed</div><div class="sitem-d">Ultrafast = cepat, kualitas standar</div></div>
+      <select class="ssel" id="setEnc"><option value="ultrafast" selected>Ultrafast</option><option value="veryfast">Veryfast</option><option value="fast">Fast (lambat)</option></select>
+    </div>
+  </div>
+
+  <div class="sgroup">
+    <div class="sgroup-t">Data</div>
+    <div class="sitem" style="cursor:pointer" onclick="clearLibrary()">
+      <div><div class="sitem-t" style="color:var(--err)">Hapus Semua Riwayat</div><div class="sitem-d">Reset library & cache lokal</div></div>
+      <span style="color:var(--err)">🗑</span>
+    </div>
+    <div class="sitem">
+      <div><div class="sitem-t">ClipForge Studio</div><div class="sitem-d">v4.0 · AI Clipper Engine · FFmpeg.wasm</div></div>
+      <span>⚡</span>
+    </div>
+  </div>
+</main>
+</div>
+
+<!-- BOTTOM NAV -->
+<nav class="bnav">
+  <button class="nav active" id="nav-studio" onclick="goPage('studio')"><span class="nav-ic">⚡</span><span>Studio</span></button>
+  <button class="nav" id="nav-library" onclick="goPage('library')"><span class="nav-ic">📚</span><span>Library</span></button>
+  <button class="nav" id="nav-settings" onclick="goPage('settings')"><span class="nav-ic">⚙️</span><span>Pengaturan</span></button>
+</nav>
+
+<script src="app.js"></script>
+</body>
+</html>
